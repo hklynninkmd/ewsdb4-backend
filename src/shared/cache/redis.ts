@@ -1,6 +1,7 @@
 import { createClient, RedisClientType } from 'redis';
 import config from '@/config';
 import logger from '@/shared/logger';
+import {Try} from '@/shared/utils/Try';
 
 class RedisCache {
   private static instance: RedisCache;
@@ -16,7 +17,7 @@ class RedisCache {
   }
 
   public async connect(): Promise<void> {
-    try {
+    return Try.execute(async () => {
       this.client = createClient({
         socket: {
           host: config.redis.host,
@@ -39,10 +40,7 @@ class RedisCache {
       });
 
       await this.client.connect();
-    } catch (error) {
-      logger.error('Failed to connect to Redis:', error);
-      throw error;
-    }
+    }).orElseThrow('Failed to connect to Redis');
   }
 
   public getClient(): RedisClientType {

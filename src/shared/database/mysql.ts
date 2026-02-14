@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import config from '@/config';
 import logger from '@/shared/logger';
+import {Try} from '@/shared/utils/Try';
 
 class MySQLDatabase {
   private static instance: MySQLDatabase;
@@ -16,7 +17,7 @@ class MySQLDatabase {
   }
 
   public async connect(): Promise<void> {
-    try {
+    return Try.execute(async () => {
       this.pool = mysql.createPool({
         host: config.database.host,
         port: config.database.port,
@@ -31,10 +32,7 @@ class MySQLDatabase {
       const connection = await this.pool.getConnection();
       logger.info('MySQL database connected successfully');
       connection.release();
-    } catch (error) {
-      logger.error('Failed to connect to MySQL database:', error);
-      throw error;
-    }
+    }).orElseThrow('Failed to connect to MySQL database');
   }
 
   public getPool(): mysql.Pool {
@@ -63,17 +61,14 @@ class MySQLDatabase {
     const pool = this.getPool();
     const connection = await pool.getConnection();
 
-    try {
+    return Try.execute(async () => {
       await connection.beginTransaction();
       const result = await callback(connection);
       await connection.commit();
       return result;
-    } catch (error) {
+    }).onFailure(async () => {
       await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    }).orElseThrow('Transaction failed') as Promise<T>;
   }
 }
 

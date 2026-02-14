@@ -31,6 +31,21 @@ interface Config {
     secret: string;
     expiresIn: string;
   };
+  aws: {
+    region: string;
+    accessKeyId: string;
+    secretAccessKey: string;
+    s3: {
+      bucketName: string;
+      documentPrefix: string;
+    };
+  };
+  rabbitmq: {
+    url: string;
+    queueName: string;
+    exchangeName: string;
+    routingKey: string;
+  };
 }
 
 const config: Config = {
@@ -60,6 +75,21 @@ const config: Config = {
   jwt: {
     secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  },
+  aws: {
+    region: process.env.AWS_REGION || 'us-east-1',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+    s3: {
+      bucketName: process.env.S3_BUCKET_NAME || '',
+      documentPrefix: process.env.S3_DOCUMENT_PREFIX || 'documents/',
+    },
+  },
+  rabbitmq: {
+    url: process.env.RABBITMQ_URL || 'amqp://localhost:5672',
+    queueName: process.env.RABBITMQ_QUEUE_NAME || 'document-processing',
+    exchangeName: process.env.RABBITMQ_EXCHANGE_NAME || 'documents',
+    routingKey: process.env.RABBITMQ_ROUTING_KEY || 'document.upload',
   },
 };
 

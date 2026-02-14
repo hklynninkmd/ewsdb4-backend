@@ -3,9 +3,10 @@ import config from '@/config';
 import database from '@/shared/database/mysql';
 import cache from '@/shared/cache/redis';
 import logger from '@/shared/logger';
+import {Try} from '@/shared/utils/Try';
 
 const startServer = async () => {
-  try {
+  await Try.execute(async () => {
     await database.connect();
     await cache.connect();
 
@@ -20,15 +21,14 @@ const startServer = async () => {
       server.close(async () => {
         logger.info('HTTP server closed');
 
-        try {
+        await Try.execute(async () => {
           await database.disconnect();
           await cache.disconnect();
           logger.info('All connections closed. Exiting process.');
           process.exit(0);
-        } catch (error) {
-          logger.error('Error during shutdown:', error);
+        }).onFailure(() => {
           process.exit(1);
-        }
+        }).orElseLogWarning('Error during shutdown');
       });
 
       setTimeout(() => {
@@ -49,10 +49,9 @@ const startServer = async () => {
       logger.error('Uncaught Exception:', error);
       process.exit(1);
     });
-  } catch (error) {
-    logger.error('Failed to start server:', error);
+  }).onFailure(() => {
     process.exit(1);
-  }
+  }).orElseLogWarning('Failed to start server');
 };
 
 startServer()

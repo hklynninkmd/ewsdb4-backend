@@ -23,7 +23,10 @@ A production-ready backend API built with Node.js, Express, TypeScript, MySQL, a
 - **Language**: TypeScript
 - **Database**: MySQL 8.0
 - **Cache**: Redis 7
+- **Storage**: AWS S3
+- **Message Queue**: RabbitMQ
 - **Authentication**: JWT + bcrypt
+- **File Upload**: Multer
 - **Testing**: Jest + Supertest
 - **Code Quality**: ESLint + Prettier
 - **CI/CD**: GitHub Actions
@@ -36,6 +39,8 @@ A production-ready backend API built with Node.js, Express, TypeScript, MySQL, a
 - Node.js >= 18.0.0
 - MySQL 8.0
 - Redis 7
+- RabbitMQ 3.13
+- AWS Account (for S3 storage)
 
 ### Installation
 
@@ -54,6 +59,9 @@ mysql -u root -p < scripts/setup-db.sql
 
 # 4. Start development server
 npm run dev
+
+# 5. Start worker service (in a separate terminal)
+npm run dev:worker
 ```
 
 The API will be available at `http://localhost:3000/api/v1`
@@ -78,16 +86,20 @@ ewsdb4/
 │   │   └── asyncHandler.ts   # Async error wrapper
 │   ├── modules/               # Feature modules (domain-driven)
 │   │   ├── auth/             # Authentication module
-│   │   └── user/             # User module
+│   │   ├── user/             # User module
+│   │   └── document/         # Document management module
 │   ├── routes/               # Route aggregation
 │   ├── shared/               # Shared utilities
 │   │   ├── database/         # MySQL connection pool
 │   │   ├── cache/           # Redis client wrapper
+│   │   ├── storage/         # S3 storage service
+│   │   ├── mq/              # RabbitMQ message queue
 │   │   └── logger/          # Winston logger
 │   ├── utils/               # Utility functions
 │   │   ├── jwt.ts          # JWT utilities
 │   │   └── password.ts     # Password hashing
 │   ├── types/              # TypeScript type definitions
+│   ├── worker/            # Background worker services
 │   ├── app.ts             # Express app setup
 │   └── index.ts           # Server entry point
 ├── scripts/               # Database setup scripts
@@ -113,8 +125,10 @@ import { authenticate } from '@/middleware/auth';
 ```bash
 # Development
 npm run dev              # Start dev server with hot reload
+npm run dev:worker       # Start worker service with hot reload
 npm run build            # Build for production
 npm start                # Start production server
+npm run start:worker     # Start production worker
 
 # Testing
 npm test                 # Run tests with coverage
@@ -278,6 +292,17 @@ GET /health
 | PUT | `/users/:id` | Update user | No |
 | DELETE | `/users/:id` | Delete user | No |
 
+### Documents
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| POST | `/documents/upload` | Upload document | Yes |
+| GET | `/documents` | Get user documents | Yes |
+| GET | `/documents/:id` | Get document by ID | Yes |
+| GET | `/documents/:id/download` | Download document | Yes |
+| GET | `/documents/:id/download-url` | Get signed download URL | Yes |
+| DELETE | `/documents/:id` | Delete document | Yes |
+
 ### Response Format
 
 **Success:**
@@ -351,7 +376,77 @@ curl -X POST http://localhost:3000/api/v1/auth/login \
 TOKEN="your-token-here"
 curl http://localhost:3000/api/v1/auth/me \
   -H "Authorization: Bearer $TOKEN"
+
+# Upload document
+curl -X POST http://localhost:3000/api/v1/documents/upload \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/path/to/document.pdf"
+
+# Get user documents
+curl http://localhost:3000/api/v1/documents \
+  -H "Authorization: Bearer $TOKEN"
+
+# Get signed download URL
+curl http://localhost:3000/api/v1/documents/{id}/download-url \
+  -H "Authorization: Bearer $TOKEN"
 ```
+
+## 📄 Document Management
+
+This project includes a complete document management system with the following features:
+
+### Features
+
+- **Asynchronous Processing**: Documents are uploaded to S3 and queued for background processing via RabbitMQ
+- **Non-Blocking Uploads**: API responds immediately after upload, processing happens in worker
+- **Scalable Storage**: Uses AWS S3 for reliable and scalable document storage
+- **Multiple File Types**: Supports PDF, Word, Excel, images, HTML, and text files
+- **Secure Access**: All document operations require authentication
+- **Signed URLs**: Generate temporary download URLs with expiration
+- **Status Tracking**: Track document processing status (pending, processing, completed, failed)
+
+### Document Upload Flow
+
+```
+1. Client uploads file → API endpoint
+2. File uploaded to S3
+3. Metadata saved to MySQL
+4. Message published to RabbitMQ queue
+5. API responds immediately (non-blocking)
+6. Worker picks up message from queue
+7. Worker processes document
+8. Status updated in database
+```
+
+### Worker Service
+
+The worker service runs independently and processes documents asynchronously:
+
+```bash
+# Start worker in development
+npm run dev:worker
+
+# Start worker in production
+npm run start:worker
+```
+
+The worker:
+- Connects to RabbitMQ and listens for document messages
+- Downloads documents from S3
+- Processes documents based on type (PDF, Word, HTML, etc.)
+- Updates document status in database
+- Handles errors gracefully with retry logic
+
+### Supported File Types
+
+- **Documents**: PDF, Word (.doc, .docx), Excel (.xls, .xlsx), Text (.txt)
+- **Web**: HTML
+- **Images**: JPEG, PNG, GIF
+
+### File Size Limits
+
+- Maximum file size: 50 MB per upload
+- Can be configured in `document.routes.ts`
 
 ## 🚢 Deployment
 
@@ -390,6 +485,15 @@ DB_NAME=your-db-name
 # Redis
 REDIS_HOST=your-redis-host
 REDIS_PORT=6379
+
+# AWS S3
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+S3_BUCKET_NAME=your-bucket-name
+
+# RabbitMQ
+RABBITMQ_URL=amqp://localhost:5672
 
 # JWT
 JWT_SECRET=your-super-secret-jwt-key
